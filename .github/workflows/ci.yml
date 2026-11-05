@@ -22,6 +22,7 @@ jobs:
       - run: php -n tests/form-response.test.php
       - run: php -n tests/equipment-scope.test.php
       - run: php -n tests/privacy-routing.test.php
+      - run: php -n tests/carried-attribution.test.php
       - run: php tests/required-compatibility.test.php
       - run: php tests/owner-protocol.test.php
       - run: php tests/schema-rolling.test.php

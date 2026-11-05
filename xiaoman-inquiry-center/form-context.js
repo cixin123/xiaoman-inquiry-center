@@ -12,7 +12,34 @@
   // A single plugin-owned packet replaces builder HD fields. Native Custom gates CRM.
   var FORM = 'form.brxe-form[data-xi-inquiry]';
   var KEYS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','utm_adgroup','utm_device','utm_matchtype','utm_network','utm_creative','campaign','campaign_name','campaign_id','campaignid','adgroup','adgroup_name','adgroup_id','adgroupid','adset_name','adset_id','ad','ad_name','ad_id','creative_id','adid','creative','keyword','kw','device','loc','loc_physical_ms','gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid','matchtype','mt','network','placement','targetid','target_id'];
+  // Without consent only campaign-structure codes may follow an internal link, in the URL fragment:
+  // never a click ID, nothing stored, and the fragment never reaches the server or the page cache.
+  var CLICK_IDS = ['gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid'];
+  var CARRY = KEYS.filter(function (k) { return CLICK_IDS.indexOf(k) < 0; }), MARK = '#xi=';
   function text(v, n) { return typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, n || 500) : ''; }
+  function codes(params) {
+    var out = {};
+    CARRY.forEach(function (k) { var v = text(params.get(k), 200); if (v && !/[{}]|__[A-Z_]+__/.test(v)) out[k] = v; });
+    return Object.keys(out).length ? out : null;
+  }
+  // '#xi=' + encoded codes and the click time; valid for one visit window after that click.
+  function carriedCodes(hash, now) {
+    if (typeof hash !== 'string' || hash.indexOf(MARK) !== 0 || hash.length > 2000) return null;
+    try {
+      var q = new URLSearchParams(decodeURIComponent(hash.slice(MARK.length))), at = Number(q.get('t'));
+      if (!Number.isFinite(at) || at > now + 60000 || now - at >= IDLE) return null;
+      var found = codes(q); return found ? {codes:found, at:at} : null;
+    } catch (_) { return null; }
+  }
+  function carryHash(found, now) {
+    var q = new URLSearchParams(); Object.keys(found).forEach(function (k) { q.set(k, found[k]); }); q.set('t', String(now));
+    return MARK + encodeURIComponent(q.toString());
+  }
+  function withCodes(href, found) {
+    var u = new URL(href); u.hash = '';
+    Object.keys(found).forEach(function (k) { if (!u.searchParams.has(k)) u.searchParams.set(k, found[k]); });
+    return u.href;
+  }
   function url(v, params) {
     try {
       var u = new URL(v); if (!/^https?:$/.test(u.protocol) || u.username || u.password || u.port) return '';
@@ -111,6 +138,12 @@
   function start(w) {
     if (!w || w.location.hostname !== CFG.host || /[?&](bricks|brickspreview)=/.test(w.location.search)) return;
     var d = w.document, initialHref = w.location.href, initialRef = d.referrer;
+    // A tagged page carries its own codes. An untagged page may receive codes from the previous page of this tab;
+    // a page URL that already has campaign codes always wins, and the marker is removed from the address bar.
+    var own = codes(new URL(initialHref).searchParams), carried = own ? {codes:own, at:0} : null, landingHref = initialHref;
+    if (!own) { carried = carriedCodes(w.location.hash, Date.now()); if (carried) landingHref = withCodes(initialHref, carried.codes); }
+    if (w.location.hash.indexOf(MARK) === 0) { try { w.history.replaceState(w.history.state, '', w.location.pathname + w.location.search); } catch (_) {} }
+    function landing() { return carried && carried.at && Date.now() - carried.at >= IDLE ? initialHref : landingHref; }
     var nav = w.performance && typeof w.performance.getEntriesByType==='function' && w.performance.getEntriesByType('navigation')[0];
     var navigationType = nav ? nav.type : 'navigate';
     var state = null, allowed = false, operational = null, pendingPopup = null, popupCTA = new WeakMap(), inlineCTA = new WeakMap();
@@ -128,7 +161,7 @@
     function refreshOperational() {
       if(!allowed){removeOperational();return null;}
       var now = Date.now(), saved = sessionRecord(read('sessionStorage', SESSION), now);
-      var current = sessionRecord({landing:url(initialHref,true),ref:url(initialRef),at:now}, now);
+      var current = sessionRecord({landing:url(landing(),true),ref:url(initialRef),at:now}, now);
       // A newly tagged page is a new authoritative ad entry for this tab.
       operational = current || saved;
       try {
@@ -159,7 +192,7 @@
       var next = consent();
       if (!next) { if (allowed || consentStatus === 'consent_declined') remove(); if (consentStatus === 'consent_declined') removeOperational(); allowed = false; state = null; pendingPopup = null; popupCTA = new WeakMap(); inlineCTA = new WeakMap(); return; }
       if (!allowed || !state) {
-        state = advance(read('localStorage', FIRST), read('sessionStorage', VISIT), initialHref, initialRef, Date.now(), navigationType);
+        state = advance(read('localStorage', FIRST), read('sessionStorage', VISIT), landing(), initialRef, Date.now(), navigationType);
         // Drop text/position retained by an older page in this tab's visit record.
         if (state.visit.cta) { var oldCTA = state.visit.cta; state.visit.cta = {id:text(oldCTA.id),at:oldCTA.at,to:oldCTA.to}; }
         allowed = true; save();
@@ -190,9 +223,11 @@
       var diagnostic = {version:'1.0.6', status:consentStatus, basis:'none', storage:'not_used'}, source = null;
       // An in-memory snapshot of this page, not a cross-page tracking store.
       // Rejection clears retained history, not the URL already opened on this page.
-      var request = {landing_ad_url:url(initialHref,true),referrer:url(initialRef),
+      var here = landing();
+      var request = {landing_ad_url:url(here,true),referrer:url(initialRef),
         consent_status:allowed?'accepted':(consentStatus==='consent_declined'?'rejected':'unknown')};
-      Object.assign(values,ads(initialHref,initialRef));
+      if (here !== initialHref) diagnostic.carried = 'previous_page_codes';
+      Object.assign(values,ads(here,initialRef));
       if (allowed && state) {
         var selected = marketing();
         source = selected.source || {landing:state.visit.entry.landing,ref:state.visit.entry.ref,at:state.visit.entry.at};
@@ -250,6 +285,23 @@
       fillAll();
     }
     d.addEventListener('click',click,true);
+    // Only while there is no consent: retained history covers the consented visitor.
+    function decorate(e) {
+      if (allowed || !carried) return;
+      var a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a || a.hasAttribute('download')) return;
+      try {
+        var now = Date.now(), target = new URL(a.getAttribute('href'), w.location.href), here = new URL(w.location.href);
+        if (carried.at && now - carried.at >= IDLE) return;
+        if (!/^https?:$/.test(target.protocol) || !internal(target.href, here.href)) return;
+        if (target.hash && target.hash.indexOf(MARK) !== 0) return;
+        if (target.origin + target.pathname + target.search === here.origin + here.pathname + here.search) return;
+        if (/^\/(wp-admin|wp-login\.php|wp-json)(\/|$)/.test(target.pathname) || /\.(pdf|zip|rar|jpe?g|png|gif|webp|svg|docx?|xlsx?|pptx?|mp4)$/i.test(target.pathname)) return;
+        target.hash = carryHash(carried.codes, now);
+        a.setAttribute('href', target.href);
+      } catch (_) {}
+    }
+    ['mousedown','touchstart','click','auxclick','contextmenu','keydown'].forEach(function(name) { d.addEventListener(name,decorate,{capture:true,passive:true}); });
     var lastActivityWrite = 0;
     function activity() { if (Date.now() - lastActivityWrite > 10000) { lastActivityWrite = Date.now(); touch(); } }
     d.addEventListener('keydown',activity,true);
