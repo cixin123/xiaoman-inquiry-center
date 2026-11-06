@@ -16,6 +16,7 @@
 - Google Ads 落地 URL 实际传入 campaign/adgroup/keyword/device 等参数。仅 click ID 无法推算广告系列名称；Cloudflare 不负责补出它们。
 - 按广告类型确认参数可用性。Performance Max 无关键词匹配时 keyword 可为空；其素材组与搜索广告组含义不同，不把不可用字段伪造为广告组。参考 Google 官方 ValueTrack 支持范围：https://support.google.com/google-ads/answer/6305348?hl=en 。
 - Cloudflare/源站不得缓存 POST、admin-ajax 或询盘后台；感谢页含临时凭据时不缓存。核对国家识别、广告参数保留、WAF、脚本延迟/合并和重定向。
+- 多语言 REST 排除不能只写根 `/wp-json/`：Cloudflare 在本站域名范围内保留根路径条件，并加入路径包含 `/wp-json/`；LiteSpeed 保留原项，追加无开头锚点 `^` 的 `/wp-json/`。对根及所有实际语言前缀的公开 REST 索引、感谢页重复发出匿名请求，留存 JSON/页面类型、禁止缓存响应头及 Cloudflare `DYNAMIC`/`BYPASS`；`MISS` 不是已禁用缓存的证明。这项外部验收独立于插件“配置匹配”结果。
 - 分别记录网站、GA4、Ads 时区。对账按真实转化时间统一换算，不能拿点击日期列对网站提交日期。
 - 小满线索名称日期按原始保存时间换算为固定北京时间 `Asia/Shanghai`：00:00–17:59:59 取当日，18:00 起取次日，格式 YYMMDD。不依赖 WordPress/服务器时区，不平移实际提交时间。备注、原 UTC 和 Google 实际时间保持不变；重试从同一个原始保存时间重新计算，不累加日期，不重命名或重发历史 CRM 成功记录。迁移前核对旧站自己的名称规则，参见 [线索名称日期规则](LEAD-NAME-DATE-RULE.md)。
 - 本项目表单计数口径：Ads原生主要、GA4导入次要，两操作分别Every/30天点击窗口。按本站账号实际保存核验，不由插件安装自动修改；不同日期的旧One口径单列。修改只影响后续报告，不补历史缺失。[Google计数说明](https://support.google.com/google-ads/answer/3438531)、[转化窗口](https://support.google.com/google-ads/answer/3123169)。

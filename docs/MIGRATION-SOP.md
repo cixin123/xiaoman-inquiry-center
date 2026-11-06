@@ -33,6 +33,8 @@ beta.11 的通用安装与构建说明见 [UNIVERSAL-PACKAGE-SOP.md](UNIVERSAL-P
 
 - 核对 DNS 代理、IP Geolocation、真实来源地址配置及防火墙。
 - 检查 `/wp-admin/*`、登录态、`admin-ajax.php`、表单 POST、相关 REST 请求不被缓存；不能凭插件已启用就认为规则已完成。
+- 多语言站点必须同时覆盖根 `/wp-json/` 和实际语言前缀下的 REST，例如 `/es/wp-json/`。Cloudflare 保留本站域名和原条件，在同一动态绕过规则中保留根路径 `starts_with(http.request.uri.path, "/wp-json")`，并加入 `http.request.uri.path contains "/wp-json/"`；LiteSpeed 保留原排除项，另加无 `^` 的 `/wp-json/`，避免只匹配根路径。
+- 保存后，以匿名请求重复核对根及本站各语言的公开 REST 索引和感谢页：REST 返回 JSON；响应禁止缓存；Cloudflare 为 `DYNAMIC` 或 `BYPASS`，不能把 `MISS` 当作已排除缓存。单列响应头证据。插件的本地配置匹配结果不替代这项外部核验。
 - 检查 WAF/机器人验证是否拦截原生表单动作，不关闭全站保护。
 - Google Ads 给真实落地页传入 utm_source/medium/campaign、campaign_id/adgroup_id/ad_id 等实际参数；PMax keyword 为空可能正常。
 - 缓存无需按全部 gclid 建缓存键。访客的来源 URL 不输出进共享缓存 HTML。
