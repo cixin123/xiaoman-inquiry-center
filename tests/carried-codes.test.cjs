@@ -6,8 +6,8 @@ const {JSDOM}=require('jsdom');
 const root=path.join(__dirname,'../xiaoman-inquiry-center');
 const form='<form class="brxe-form" data-xi-inquiry="quick" data-xifr-form="1" data-xifr-field="Message" data-xifr-page-required="false"><input name="FullName"><textarea name="Message"></textarea><button type="submit">Submit</button></form>';
 const links='<a id="product" href="/products/x/">x</a><a id="lang" href="https://www.fixture.example.invalid/fr/products/x/">fr</a><a id="external" href="https://other.example/">o</a><a id="anchor" href="#top">t</a><a id="popup" href="/products/x/#brx-popup-1">p</a><a id="file" href="/files/catalog.pdf">pdf</a><a id="admin" href="/wp-admin/">a</a><a id="self" href="/contact/">self</a><a id="download" href="/products/x/" download>d</a>';
-function page(suffix='',choice='rejected'){
- const dom=new JSDOM(form+links,{url:'https://fixture.example.invalid/contact/'+suffix,runScripts:'outside-only'});const w=dom.window;
+function page(suffix='',choice='rejected',extra={}){
+ const dom=new JSDOM(form+links+(extra.html||''),{url:'https://fixture.example.invalid/contact/'+suffix,referrer:extra.referrer,runScripts:'outside-only'});const w=dom.window;
  w.XIContextConfig={host:'fixture.example.invalid',service:'xiaoman-inquiry-attribution'};w.XIFRConfig={fieldName:'Message',minLength:1,campaignCodes:['pm']};
  w.__consent=choice;
  w.consentApi={consentSync(){return w.__consent==='missing'?{cookie:null}:{cookie:{id:1},consentGiven:true,cookieOptIn:w.__consent==='accepted'};}};
@@ -74,4 +74,37 @@ test('a PM campaign carried to the next page keeps the message requirement',()=>
 });
 test('the consent service being missing is treated like no consent',()=>{
  const d=page(adLanding,'missing');assert.equal(carriedFrom(press(d,'product')).get('campaign'),'sefk-ds-la03');assert.equal(d.window.localStorage.length,0);d.window.close();
+});
+test('a tagged page on this site is read from the referrer when the landing page never ran its script',()=>{
+ const landing='https://fixture.example.invalid/products/'+adLanding;
+ const d=page('','rejected',{referrer:landing});const p=packet(d);
+ assert.equal(p.A1,'sefk-ds-la03');assert.equal(p.A3,'123');assert.equal(p.A5,'','click IDs in the referrer are never taken');assert.equal(p._tracking.carried,'previous_page_codes');
+ assert.ok(p._request.landing_ad_url.includes('campaign=sefk-ds-la03'));assert.ok(!p._request.landing_ad_url.includes('CLICK-ID'));assert.ok(!JSON.stringify(p).includes('BRAID'));
+ assert.equal(d.window.localStorage.length,0);assert.equal(carriedFrom(press(d,'product')).get('campaign'),'sefk-ds-la03','the chain continues');d.window.close();
+});
+test('a consented visitor opened from a landing page that never ran gets the campaign into history',()=>{
+ const d=page('','accepted',{referrer:'https://fixture.example.invalid/products/'+adLanding});assert.equal(packet(d).A1,'sefk-ds-la03');
+ assert.ok(d.window.localStorage.getItem('xi_marketing_v1').includes('campaign=sefk-ds-la03'));assert.ok(!d.window.localStorage.getItem('xi_marketing_v1').includes('CLICK-ID'));d.window.close();
+});
+test('a Google-decorated next page keeps its own click ID and takes the codes from the referrer',()=>{
+ const d=page('?_gl=1*abc&gclid=SAME-CLICK','accepted',{referrer:'https://fixture.example.invalid/products/?campaign=pmfk-el-br&device=m&loc=1&gclid=SAME-CLICK'});const p=packet(d);
+ assert.equal(p.A1,'pmfk-el-br');assert.equal(p.A5,'SAME-CLICK');d.window.close();
+});
+test('referrers from other sites, untagged referrers and own URL codes are respected',()=>{
+ const a=page('','rejected',{referrer:'https://www.google.com/search?campaign=evil&gclid=x'});assert.equal(packet(a).A1,'');a.window.close();
+ const b=page('','rejected',{referrer:'https://fixture.example.invalid/products/'});assert.equal(packet(b).A1,'');assert.equal(packet(b)._tracking.carried,undefined);b.window.close();
+ const c=page('?campaign=new-code','rejected',{referrer:'https://fixture.example.invalid/products/?campaign=old-code'});assert.equal(packet(c).A1,'new-code');c.window.close();
+ const e=page(mark('campaign=from-hash&t='+Date.now()),'rejected',{referrer:'https://fixture.example.invalid/products/?campaign=from-ref'});assert.equal(packet(e).A1,'from-hash','the marker is the later evidence');e.window.close();
+});
+test('AJAX pagination: the snapshot follows the address, and its links are not decorated',()=>{
+ const d=page(adLanding,'rejected',{html:'<div class="brxe-pagination brx-ajax-pagination"><a id="next" class="page-numbers" href="/contact/page/2/">2</a></div>'});
+ assert.equal(press(d,'next'),'/contact/page/2/');
+ d.window.history.pushState({},'','/contact/page/2/');d.window.document.querySelector('textarea').dispatchEvent(new d.window.FocusEvent('focusin',{bubbles:true}));
+ const p=packet(d);assert.ok(p._request.landing_ad_url.startsWith('https://fixture.example.invalid/contact/page/2/?'),p._request.landing_ad_url);assert.ok(p._request.landing_ad_url.includes('campaign=sefk-ds-la03'));assert.equal(p.A1,'sefk-ds-la03');assert.equal(p.H1,'https://fixture.example.invalid/contact/page/2/');
+ assert.ok(carriedFrom(press(d,'product')).get('campaign'),'ordinary links on the new page still carry');d.window.close();
+});
+test('a marker on the thank-you redirect keeps the query, is removed and carries on to the next page',()=>{
+ const d=page('?form=quick_quote&inquiry_id=FW-N7&form_type=detail'+mark('campaign=pmfk-el-br&device=m&loc=1&t='+Date.now()));
+ assert.equal(d.window.location.hash,'');assert.equal(d.window.location.search,'?form=quick_quote&inquiry_id=FW-N7&form_type=detail');
+ assert.equal(carriedFrom(press(d,'product')).get('campaign'),'pmfk-el-br');d.window.close();
 });

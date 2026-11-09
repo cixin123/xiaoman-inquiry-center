@@ -31,6 +31,11 @@
       var found = codes(q); return found ? {codes:found, at:at} : null;
     } catch (_) { return null; }
   }
+  // The page this one was opened from, when it is on this site: covers a landing page left before its scripts ran.
+  function referrerCodes(ref, href) {
+    if (!ref || !internal(ref, href)) return null;
+    try { return codes(new URL(ref).searchParams); } catch (_) { return null; }
+  }
   function carryHash(found, now) {
     var q = new URLSearchParams(); Object.keys(found).forEach(function (k) { q.set(k, found[k]); }); q.set('t', String(now));
     return MARK + encodeURIComponent(q.toString());
@@ -141,9 +146,17 @@
     // A tagged page carries its own codes. An untagged page may receive codes from the previous page of this tab;
     // a page URL that already has campaign codes always wins, and the marker is removed from the address bar.
     var own = codes(new URL(initialHref).searchParams), carried = own ? {codes:own, at:0} : null, landingHref = initialHref;
-    if (!own) { carried = carriedCodes(w.location.hash, Date.now()); if (carried) landingHref = withCodes(initialHref, carried.codes); }
+    if (!own) {
+      var arrived = Date.now(), fromRef = referrerCodes(initialRef, initialHref);
+      carried = carriedCodes(w.location.hash, arrived) || (fromRef ? {codes:fromRef, at:arrived} : null);
+      if (carried) landingHref = withCodes(initialHref, carried.codes);
+    }
     if (w.location.hash.indexOf(MARK) === 0) { try { w.history.replaceState(w.history.state, '', w.location.pathname + w.location.search); } catch (_) {} }
     function landing() { return carried && carried.at && Date.now() - carried.at >= IDLE ? initialHref : landingHref; }
+    // Bricks AJAX pagination moves the address without a reload: the snapshot must name the page the form is really on.
+    function onCurrentPath(href) {
+      try { var u = new URL(href), path = new URL(w.location.href).pathname; if (u.pathname === path) return href; u.pathname = path; return u.href; } catch (_) { return href; }
+    }
     var nav = w.performance && typeof w.performance.getEntriesByType==='function' && w.performance.getEntriesByType('navigation')[0];
     var navigationType = nav ? nav.type : 'navigate';
     var state = null, allowed = false, operational = null, pendingPopup = null, popupCTA = new WeakMap(), inlineCTA = new WeakMap();
@@ -224,7 +237,7 @@
       // An in-memory snapshot of this page, not a cross-page tracking store.
       // Rejection clears retained history, not the URL already opened on this page.
       var here = landing();
-      var request = {landing_ad_url:url(here,true),referrer:url(initialRef),
+      var request = {landing_ad_url:url(onCurrentPath(here),true),referrer:url(initialRef),
         consent_status:allowed?'accepted':(consentStatus==='consent_declined'?'rejected':'unknown')};
       if (here !== initialHref) diagnostic.carried = 'previous_page_codes';
       Object.assign(values,ads(here,initialRef));
@@ -289,7 +302,8 @@
     function decorate(e) {
       if (allowed || !carried) return;
       var a = e.target && e.target.closest && e.target.closest('a[href]');
-      if (!a || a.hasAttribute('download')) return;
+      // AJAX pagination stays on this document and would push the marker into the address bar.
+      if (!a || a.hasAttribute('download') || a.closest('.brx-ajax-pagination')) return;
       try {
         var now = Date.now(), target = new URL(a.getAttribute('href'), w.location.href), here = new URL(w.location.href);
         if (carried.at && now - carried.at >= IDLE) return;

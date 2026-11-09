@@ -48,5 +48,9 @@ check('unexpanded placeholders are dropped', ($e['campaign'] ?? '') === '');
 $f = submit($page, 'https://evil.example/fr/product/30hp-304-compact-tractor/?campaign=setr-cp-fr&device=m&loc=1006094');
 check('a packet URL on another host is ignored', ($f['campaign'] ?? '') === '');
 
+$page2 = 'https://fixture.example.invalid/excavators/mini-excavator/page/2/';
+$g = submit($page2, $page2 . '?campaign=pmex-cp-eu&device=m&loc=1006094&gclid=SAME', 'rejected', '');
+check('AJAX pagination: a packet rebased onto the current path keeps Google Ads and the campaign', ($g['source_label'] ?? '') === 'Google Ads' && ($g['campaign'] ?? '') === 'pmex-cp-eu' && ($g['landing_path'] ?? '') === '/excavators/mini-excavator/page/2/');
+
 echo $failures ? "$failures failure(s)\n" : "all passed\n";
 exit($failures ? 1 : 0);

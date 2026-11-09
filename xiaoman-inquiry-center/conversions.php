@@ -143,6 +143,16 @@ final class XI_Conversions {
   $ok=$wpdb->insert(self::table(),array('submission_id'=>$id,'token_hash'=>hash('sha256',$token),'request_uuid'=>$r['uuid'],'form_kind'=>$r['kind'],'created_utc'=>gmdate('Y-m-d H:i:s'),'expires_utc'=>gmdate('Y-m-d H:i:s',time()+1800),'site_timezone'=>wp_timezone_string(),'is_test'=>!empty($r['is_test'])?1:0,'consent_at_submit'=>wp_json_encode(self::states($r['measurement_consent']??array()))));
   if(!$ok)return '';return self::$tickets[$id]=$token;
  }
+ // Without consent the browser keeps nothing, so the campaign codes (never a click ID) follow the redirect the way form-context.js carries them on links.
+ static function carried_fragment($r){
+  $a=is_array($r['attribution']??null)?$r['attribution']:array();
+  if(($a['consent_status']??'')==='accepted'||!is_string($a['landing_url']??null))return '';
+  parse_str((string)parse_url($a['landing_url'],PHP_URL_QUERY),$q);
+  foreach(array('gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid') as $k)unset($q[$k]);
+  if(!$q)return '';
+  $q['t']=sprintf('%.0f',microtime(true)*1000);
+  return '#xi='.rawurlencode(http_build_query($q,'','&',PHP_QUERY_RFC3986));
+ }
  static function response($response,$form){
   if(!self::active()||!is_array($response)||($response['type']??'')!=='success'||!is_callable(array($form,'get_id')))return $response;
   $r=XI_Native_Inquiry_Center::$requests[XI_Native_Inquiry_Center::context_key($form)]??null;
@@ -152,7 +162,7 @@ final class XI_Conversions {
   $args=array('form'=>'quick_quote','inquiry_id'=>XI_Native_Inquiry_Center::number($id),'form_type'=>$r['kind']);
   // A measurement storage fault must not invite repeat form/CRM submissions.
   try{XI_Lead_Stages::record($id,'initial','');$token=self::issue($id,$r);if($token!=='')$args['xi_receipt']=$token;}catch(Throwable $e){$token='';}
-  $response['redirectTo']=add_query_arg($args,self::thank_you($r));if(array_key_exists('redirectUrl',$response))$response['redirectUrl']=$response['redirectTo'];
+  $response['redirectTo']=add_query_arg($args,self::thank_you($r)).self::carried_fragment($r);if(array_key_exists('redirectUrl',$response))$response['redirectUrl']=$response['redirectTo'];
   $response['xiTracking']=$token!==''?'receipt_issued':'unavailable';
   // Form-page dispatch uses the original server deadline, never a new client-side 30-minute period.
   if($token!==''&&self::schema_ready()&&($row=self::receipt($token,XI_Native_Inquiry_Center::number($id)))){
