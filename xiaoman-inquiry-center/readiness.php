@@ -148,7 +148,7 @@ final class XI_Readiness {
   $external=array('原生表单字段、动作顺序、保存/失败、编号、语言跳转和手机布局','GTM 唯一安装、已发布标签、同意先后顺序、实时 reader 及旧发送者停用','RCB 公开编译、适用地域、选择/拒绝/撤回和存储到期清理','Cloudflare、LiteSpeed 与优化器的感谢页/参数/API/非 GET 缓存排除','小满实际字段权限、通知、唯一客户及失败后的安全重试','GA4 实际接收、Ads transaction_id/增强型哈希和成熟报表归因','真实客户端的五项 MCP 查询、默认脱敏及固定快照分页对账');
   $counts=array('pass'=>0,'warning'=>0,'blocked'=>0);
   foreach($checks as $check)$counts[$check['state']]++;
-  return array('version'=>XI_VERSION,'site_host'=>$host,'checks'=>$checks,'local_counts'=>$counts,'external_checks'=>$external,'external_acceptance'=>'not_checked','lead_name_date_rule'=>'Asia/Shanghai 18:00 起用次日；实际提交时间不变');
+  return array('version'=>XI_VERSION,'site_host'=>$host,'checks'=>$checks,'local_counts'=>$counts,'external_checks'=>$external,'external_acceptance'=>'not_checked','lead_name_date_rule'=>'Asia/Shanghai 17:30 起用次日；实际提交时间不变');
  }
  static function page() {
   if(!current_user_can('manage_options'))return;

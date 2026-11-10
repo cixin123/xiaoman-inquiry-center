@@ -78,15 +78,17 @@ function submission(string $originalUtc): array {
 $cases = array(
     array('morning', '2026-10-06 00:00:00', '261006'),
     array('at_midday', '2026-10-06 12:00:00', '261006'),
-    array('before_cutoff', '2026-10-06 17:59:59', '261006'),
-    array('at_cutoff', '2026-10-06 18:00:00', '261007'),
+    array('old_cutoff_before', '2026-10-06 17:00:00', '261006'),
+    array('before_cutoff', '2026-10-06 17:29:59', '261006'),
+    array('at_cutoff', '2026-10-06 17:30:00', '261007'),
+    array('former_cutoff', '2026-10-06 18:00:00', '261007'),
     array('before_midnight', '2026-10-06 23:59:59', '261007'),
     array('afternoon', '2026-10-06 21:24:00', '261007'),
-    array('month_before_cutoff', '2026-10-31 17:59:59', '261031'),
-    array('month_at_cutoff', '2026-10-31 18:00:00', '261101'),
-    array('year_at_cutoff', '2026-12-31 18:00:00', '270101'),
-    array('leap_feb28', '2028-02-28 18:00:00', '280229'),
-    array('leap_feb29', '2028-02-29 18:00:00', '280301')
+    array('month_before_cutoff', '2026-10-31 17:29:59', '261031'),
+    array('month_at_cutoff', '2026-10-31 17:30:00', '261101'),
+    array('year_at_cutoff', '2026-12-31 17:30:00', '270101'),
+    array('leap_feb28', '2028-02-28 17:30:00', '280229'),
+    array('leap_feb29', '2028-02-29 17:30:00', '280301')
 );
 foreach ($cases as [$label, $originalLocal, $expectedDate]) {
     $stamp = (new DateTimeImmutable($originalLocal, wp_timezone()))->getTimestamp();
@@ -99,7 +101,7 @@ foreach ($cases as [$label, $originalLocal, $expectedDate]) {
         continue;
     }
     $expectedName = $expectedDate . 'FIXTURE-PRODUCT-CAMPAIGN';
-    check($payload['name'] === $expectedName, $label . '_lead_name_beijing_18_cutoff', $payload['name'], $expectedName);
+    check($payload['name'] === $expectedName, $label . '_lead_name_beijing_1730_cutoff', $payload['name'], $expectedName);
     check(str_contains($payload['remark'], $originalLocal), $label . '_remark_original_local_time');
     $shiftedTime = wp_date('Y-m-d H:i:s', $stamp + 18 * HOUR_IN_SECONDS);
     check(!str_contains($payload['remark'], $shiftedTime), $label . '_remark_not_shifted');
@@ -123,7 +125,11 @@ date_default_timezone_set('America/New_York');
 $sameSitePayload = XI_Xiaoman_Queue_V1::payload($retryInput, $retryStamp);
 check($sameSitePayload === $retryResults[0], 'php_runtime_timezone_does_not_override_beijing_date');
 
-// Explicitly verify another WordPress timezone using a fixed UTC instant.
+// Explicitly verify another WordPress timezone using a fixed UTC instant (09:30 UTC = 17:30 Beijing).
+$GLOBALS['fixture_timezone'] = new DateTimeZone('+00:00');
+$edge = (new DateTimeImmutable('2026-10-06 09:29:59', new DateTimeZone('UTC')))->getTimestamp();
+check(substr(XI_Xiaoman_Queue_V1::payload(submission('2026-10-06 09:29:59'), $edge)['name'], 0, 6) === '261006', 'utc_0929_59_same_day');
+check(substr(XI_Xiaoman_Queue_V1::payload(submission('2026-10-06 09:30:00'), $edge + 1)['name'], 0, 6) === '261007', 'utc_0930_next_day');
 $GLOBALS['fixture_timezone'] = new DateTimeZone('+00:00');
 $utcStamp = (new DateTimeImmutable('2026-10-06 10:00:00', new DateTimeZone('UTC')))->getTimestamp();
 $utcPayload = XI_Xiaoman_Queue_V1::payload(submission('2026-10-06 10:00:00'), $utcStamp);

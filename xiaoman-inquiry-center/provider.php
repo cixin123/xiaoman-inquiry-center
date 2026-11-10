@@ -3,7 +3,7 @@ if(!defined('ABSPATH'))exit;
 final class XI_Xiaoman_Queue_V1 {
  const API=XI_API;
  const LEAD_DATE_TIMEZONE='Asia/Shanghai';
- const LEAD_DATE_CUTOFF_HOUR=18;
+ const LEAD_DATE_CUTOFF_MINUTE=1050; // 17:30 Beijing time
  const TOKEN='xi_lead_token_v1';
  static function hd_labels() {
   return array('H3'=>'PC/Mobile','H1'=>'Form Url','H2'=>'IP address',
@@ -167,7 +167,7 @@ final class XI_Xiaoman_Queue_V1 {
  }
  static function lead_name_date($submitted_at) {
   $date=(new DateTimeImmutable('@'.(int)$submitted_at))->setTimezone(new DateTimeZone(self::LEAD_DATE_TIMEZONE));
-  if((int)$date->format('G')>=self::LEAD_DATE_CUTOFF_HOUR) $date=$date->modify('+1 day');
+  if((int)$date->format('G')*60+(int)$date->format('i')>=self::LEAD_DATE_CUTOFF_MINUTE) $date=$date->modify('+1 day');
   return $date->format('ymd');
  }
  static function payload($submission,$submitted_at=null) {
@@ -182,7 +182,7 @@ final class XI_Xiaoman_Queue_V1 {
   $country=self::country($fields['IP']??'');
   $product=self::product_mapping($fields['F1']??'');
   $campaign=self::text($fields['A1']??'',100);
-  // Lead names use the next Beijing calendar date from 18:00, using the original submission time.
+  // Lead names use the next Beijing calendar date from 17:30, using the original submission time.
   // Remarks, saved timestamps and retries continue to use that original time.
   $lead_name=self::lead_name_date($submitted_at).$config['origin_name'].$product['lead_name'].self::country_name($country).$campaign;
   $contact=array('name'=>$name,'main_customer_flag'=>1,'email'=>$email);
