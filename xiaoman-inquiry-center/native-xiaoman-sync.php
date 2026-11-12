@@ -57,7 +57,7 @@ final class XI_Native_Xiaoman_Sync {
   if(($record['kind']??'')!=='detail' || !absint($values['product_id']??0)) $values['F2']='';
   $fields=array(); $labels=XI_Native_Inquiry_Center::labels($record['kind']);
   foreach($values as $key=>$value) $fields[]=array('id'=>$key,'label'=>$labels[$key]??$key,'value'=>$value);
-  $payload=XI_Xiaoman_Queue_V1::payload(array('id'=>(int)$saved['id'],'native'=>true,'fields'=>$fields,'attribution'=>$record['attribution']??array()),$stamp);
+  $payload=XI_Xiaoman_Queue_V1::payload(array('id'=>(int)$saved['id'],'native'=>true,'fields'=>$fields,'attribution'=>$record['attribution']??array(),'source'=>(string)($record['source']??'')),$stamp);
   return $payload;
  }
  static function index($id,$row) {

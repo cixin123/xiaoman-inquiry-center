@@ -170,6 +170,29 @@ final class XI_Xiaoman_Queue_V1 {
   if((int)$date->format('G')*60+(int)$date->format('i')>=self::LEAD_DATE_CUTOFF_MINUTE) $date=$date->modify('+1 day');
   return $date->format('ymd');
  }
+ const SOCIAL_CHANNELS=array('fb'=>'FB','ins'=>'INS','tk'=>'TK');
+ // Social platform of an inquiry source label: Facebook (incl. Meta and "Facebook / Instagram"), Instagram or TikTok.
+ // YouTube and every other source return '' and keep the site's Google title word and origin.
+ static function source_channel($source) {
+  $source=(string)$source;
+  if(strpos($source,'Instagram')===0) return 'ins';
+  if(strpos($source,'Facebook')===0||strpos($source,'Meta')===0) return 'fb';
+  if(strpos($source,'TikTok')===0) return 'tk';
+  return '';
+ }
+ // Title word: a site's "<brand>谷歌" becomes <brand>FB / <brand>INS / <brand>TK for those sources.
+ static function origin_word($origin_name,$source) {
+  $origin_name=(string)$origin_name; $channel=self::source_channel($source);
+  $suffix='谷歌'; $n=strlen($suffix);
+  if($channel===''||strlen($origin_name)<=$n||substr($origin_name,-$n)!==$suffix) return $origin_name;
+  return substr($origin_name,0,-$n).self::SOCIAL_CHANNELS[$channel];
+ }
+ // Xiaoman origin: the site's per-channel origin ID from settings (channel_origin_ids) when set, otherwise the site's origin.
+ static function origin_id($config,$source) {
+  $channel=self::source_channel($source); $ids=is_array($config['channel_origin_ids']??null)?$config['channel_origin_ids']:array();
+  $id=$channel===''?'':(string)($ids[$channel]??'');
+  return preg_match('/^[1-9][0-9]*$/D',$id)?$id:$config['origin_id'];
+ }
  static function payload($submission,$submitted_at=null) {
   $submitted_at=$submitted_at??time(); $config=XI_Config::get();
   if(!preg_match('/^[1-9][0-9]*$/D',$config['origin_id'])) return new WP_Error('origin','尚未核对本站的小满来源配置');
@@ -184,10 +207,11 @@ final class XI_Xiaoman_Queue_V1 {
   $campaign=self::text($fields['A1']??'',100);
   // Lead names use the next Beijing calendar date from 17:30, using the original submission time.
   // Remarks, saved timestamps and retries continue to use that original time.
-  $lead_name=self::lead_name_date($submitted_at).$config['origin_name'].$product['lead_name'].self::country_name($country).$campaign;
+  $source=(string)($submission['source']??($submission['attribution']['source_label']??''));
+  $lead_name=self::lead_name_date($submitted_at).self::origin_word($config['origin_name'],$source).$product['lead_name'].self::country_name($country).$campaign;
   $contact=array('name'=>$name,'main_customer_flag'=>1,'email'=>$email);
   if($phone!=='') $contact['whatsapp']=$phone;
-  $payload=array('lead_id'=>0,'name'=>$lead_name,'origin_list'=>array($config['origin_id']),
+  $payload=array('lead_id'=>0,'name'=>$lead_name,'origin_list'=>array(self::origin_id($config,$source)),
    'remark'=>self::inquiry_remark($fields,$submitted_at,absint($submission['id']??0)), 'customers'=>array($contact));
   if($country!=='') $payload['country']=$country;
   if($config['product_field']!=='' && $product['product_name']!=='') $payload[$config['product_field']]=array($product['product_name']);

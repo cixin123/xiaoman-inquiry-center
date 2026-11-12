@@ -45,7 +45,7 @@ final class XI_Config {
             'products' => array('fixture-product' => 'Fixture product'),
             'product_lead_names' => array('fixture-product' => 'PRODUCT-'),
             'product_field' => '', 'level_field' => '', 'level_value' => ''
-        );
+        ) + ($GLOBALS['fixture_config_extra'] ?? array());
     }
     static function credential(...$args) { throw new RuntimeException('Credentials are forbidden.'); }
 }
@@ -139,6 +139,37 @@ $GLOBALS['fixture_timezone'] = new DateTimeZone('America/New_York');
 $nyPayload = XI_Xiaoman_Queue_V1::payload(submission('2026-10-06 10:00:00'), $utcStamp);
 check($nyPayload['name'] === $utcPayload['name'], 'beijing_cutoff_independent_of_new_york_wp_timezone');
 check(str_contains($nyPayload['remark'], '2026-10-06 06:00:00'), 'new_york_remark_keeps_original_site_time');
+// beta.19: Facebook/Meta, Instagram and TikTok sources get "<brand>FB/INS/TK" and, when set, their own Xiaoman origin; YouTube and the rest keep "<brand>谷歌".
+$GLOBALS['fixture_timezone'] = new DateTimeZone('Asia/Shanghai');
+foreach (array(
+    array('Facebook 社媒（付费/自然未确定）', '华腾FB'), array('Facebook 广告', '华腾FB'), array('Meta 广告', '华腾FB'),
+    array('Facebook / Instagram（付费/自然未确定）', '华腾FB'), array('Instagram 社媒（付费/自然未确定）', '华腾INS'), array('Instagram 广告', '华腾INS'),
+    array('TikTok 社媒（付费/自然未确定）', '华腾TK'), array('TikTok 广告', '华腾TK'),
+    array('YouTube 社媒（付费/自然未确定）', '华腾谷歌'), array('YouTube 广告', '华腾谷歌'), array('Google Ads', '华腾谷歌'), array('Google 搜索（广告/自然未确定）', '华腾谷歌'),
+    array('直接访问 / 来源未提供', '华腾谷歌'), array('', '华腾谷歌'), array('ChatGPT 推荐', '华腾谷歌')) as [$src, $word]) {
+    check(XI_Xiaoman_Queue_V1::origin_word('华腾谷歌', $src) === $word, 'title_word_' . $word . '_' . $src, XI_Xiaoman_Queue_V1::origin_word('华腾谷歌', $src), $word);
+}
+check(XI_Xiaoman_Queue_V1::origin_word('FIXTURE-', 'Facebook 广告') === 'FIXTURE-', 'title_word_unchanged_without_google_suffix');
+$social = submission('2026-11-05 06:50:46'); $social['source'] = 'YouTube 社媒（付费/自然未确定）'; $stamp = strtotime('2026-11-05 06:50:46 UTC');
+check(XI_Xiaoman_Queue_V1::payload($social, $stamp)['name'] === '261105FIXTURE-PRODUCT-CAMPAIGN', 'payload_keeps_fixture_word');
+$social2 = submission('2026-11-05 06:50:46'); $social2['attribution'] = array('source_label' => 'Facebook 社媒（付费/自然未确定）');
+check(XI_Xiaoman_Queue_V1::origin_word('方威谷歌', $social2['attribution']['source_label']) === '方威FB', 'other_site_brand_kept');
+$GLOBALS['fixture_config_extra'] = array('channel_origin_ids' => array('fb' => '501', 'ins' => '502', 'tk' => '503'));
+foreach (array(array('Facebook 社媒（付费/自然未确定）', '501'), array('Meta 广告', '501'), array('Instagram 广告', '502'), array('TikTok 社媒（付费/自然未确定）', '503'),
+    array('YouTube 社媒（付费/自然未确定）', '42'), array('Google Ads', '42'), array('', '42')) as [$src, $id]) {
+    $row = submission('2026-11-05 06:50:46'); $row['source'] = $src;
+    $p = XI_Xiaoman_Queue_V1::payload($row, strtotime('2026-11-05 06:50:46 UTC'));
+    check(!is_wp_error($p) && $p['origin_list'] === array($id), 'origin_' . $id . '_' . $src, is_wp_error($p) ? $p->message : $p['origin_list'], array($id));
+}
+$GLOBALS['fixture_config_extra'] = array('channel_origin_ids' => array('fb' => '501'));
+$row = submission('2026-11-05 06:50:46'); $row['source'] = 'TikTok 广告';
+check(XI_Xiaoman_Queue_V1::payload($row, strtotime('2026-11-05 06:50:46 UTC'))['origin_list'] === array('42'), 'origin_falls_back_when_channel_unset');
+$GLOBALS['fixture_config_extra'] = array('channel_origin_ids' => array('fb' => 'not-an-id', 'tk' => '0'));
+$row['source'] = 'Facebook 广告';
+check(XI_Xiaoman_Queue_V1::payload($row, strtotime('2026-11-05 06:50:46 UTC'))['origin_list'] === array('42'), 'origin_ignores_invalid_channel_id');
+$row = submission('2026-11-05 06:50:46'); $row['attribution'] = array('source_label' => 'Instagram 广告'); $GLOBALS['fixture_config_extra'] = array('channel_origin_ids' => array('ins' => '502'));
+check(XI_Xiaoman_Queue_V1::payload($row, strtotime('2026-11-05 06:50:46 UTC'))['origin_list'] === array('502'), 'origin_from_attribution_label');
+$GLOBALS['fixture_config_extra'] = array();
 check($GLOBALS['fixture_http_attempts'] === 0, 'no_http_or_crm_attempt');
 
 $failed = count(array_filter($checks, fn($row) => !$row['passed']));

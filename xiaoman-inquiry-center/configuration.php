@@ -5,7 +5,7 @@ final class XI_Config {
  private static $save_lock=null;
  private static $save_connection=null;
  private static $save_shutdown_registered=false;
- static function defaults(){return array('enabled'=>false,'crm'=>true,'api'=>'https://api-sandbox.xiaoman.cn','number_prefix'=>'XI-N','post_type'=>'products','taxonomies'=>array(),'record_meta'=>'xi_native_record','queue_prefix'=>'xi_','queue_cursor'=>'xi_capture_cursor_v1','queue_cpt'=>'xi_job','legacy_job'=>'','legacy_sweep'=>'','legacy_group'=>'','legacy_cap'=>'','legacy_role'=>'','consent_service'=>'xiaoman-inquiry-attribution','origin_id'=>'','origin_name'=>'','product_field'=>'','level_field'=>'','level_value'=>'','products'=>array(),'product_lead_names'=>array(),'equipment_labels'=>array(),'excluded_terms'=>array(),'field_aliases'=>array(),'secrets'=>array(),'migration'=>array());}
+ static function defaults(){return array('enabled'=>false,'crm'=>true,'api'=>'https://api-sandbox.xiaoman.cn','number_prefix'=>'XI-N','post_type'=>'products','taxonomies'=>array(),'record_meta'=>'xi_native_record','queue_prefix'=>'xi_','queue_cursor'=>'xi_capture_cursor_v1','queue_cpt'=>'xi_job','legacy_job'=>'','legacy_sweep'=>'','legacy_group'=>'','legacy_cap'=>'','legacy_role'=>'','consent_service'=>'xiaoman-inquiry-attribution','origin_id'=>'','origin_name'=>'','channel_origin_ids'=>array(),'product_field'=>'','level_field'=>'','level_value'=>'','products'=>array(),'product_lead_names'=>array(),'equipment_labels'=>array(),'excluded_terms'=>array(),'field_aliases'=>array(),'secrets'=>array(),'migration'=>array());}
  static function get(){ $v=get_option(self::OPTION,array());return wp_parse_args(is_array($v)?$v:array(),self::defaults()); }
  static function credential($name){
   $constant=$name==='id'?'XIAOMAN_CLIENT_ID':'XIAOMAN_CLIENT_SECRET';
@@ -104,6 +104,8 @@ final class XI_Config {
    $api=self::api_base(wp_unslash($_POST['api']??$c['api']));if(is_wp_error($api))wp_die(esc_html($api->get_error_message()));$c['api']=$api;
    foreach(array('origin_id','product_field','level_field') as $key){$v=sanitize_text_field(wp_unslash($_POST[$key]??''));if($v!==''&&!preg_match('/^[1-9][0-9]*$/D',$v))wp_die('字段 ID 格式无效。');$c[$key]=$v;}
    foreach(array('origin_name','level_value') as $key)$c[$key]=sanitize_text_field(wp_unslash($_POST[$key]??''));
+   $raw=json_decode(wp_unslash($_POST['channel_origin_ids']??'{}'),true);if(!is_array($raw))wp_die('社媒来源映射必须为有效 JSON 对象。');
+   $c['channel_origin_ids']=array();foreach($raw as $k=>$v){if(!in_array($k,array('fb','ins','tk'),true))wp_die('社媒来源只接受 fb、ins、tk。');$v=is_scalar($v)?trim((string)$v):'';if($v==='')continue;if(!preg_match('/^[1-9][0-9]*$/D',$v))wp_die('字段 ID 格式无效。');$c['channel_origin_ids'][$k]=$v;}
    $c['post_type']=sanitize_key($_POST['post_type']??$c['post_type']);
    if(!post_type_exists($c['post_type']))wp_die('产品文章类型不存在。');
    // Not sanitize_key(): it lowercases, and a registered key such as "Tractors" would then be dropped.
@@ -215,6 +217,7 @@ final class XI_Config {
   foreach(array(''=>'尚未配置','https://api-sandbox.xiaoman.cn'=>'小满官方接口（正式）') as $value=>$label)echo '<option value="'.esc_attr($value).'" '.selected($c['api'],$value,false).'>'.esc_html($label).'</option>';
   echo '</select><p class="description">使用小满官方文档列出的正式接口。启用统一处理前必须选择有效地址。</p></td></tr>';
   foreach(array('origin_id'=>'小满来源 ID','origin_name'=>'线索名称来源词','product_field'=>'意向产品字段 ID','level_field'=>'客户等级字段 ID（可选）','level_value'=>'客户等级选项（可选）','post_type'=>'产品文章类型') as $key=>$label)echo '<tr><th>'.esc_html($label).'</th><td><input class="regular-text" name="'.esc_attr($key).'" value="'.esc_attr($c[$key]).'"></td></tr>';
+  echo '<tr><th>社媒询盘的小满来源 ID</th><td><textarea name="channel_origin_ids" rows="4" cols="70">'.esc_textarea(wp_json_encode((object)(is_array($c['channel_origin_ids'])?$c['channel_origin_ids']:array()),JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)).'</textarea><p class="description">键为 fb（Facebook/Meta）、ins（Instagram）、tk（TikTok），值为小满来源 ID。未填的渠道仍用上面的小满来源 ID；线索名称词按“站名谷歌”换成“站名FB/INS/TK”。YouTube 和其他来源不变。</p></td></tr>';
   echo '<tr><th>产品分类</th><td><input class="large-text" name="taxonomies" value="'.esc_attr(implode(',',$c['taxonomies'])).'"></td></tr>';
   foreach(array('products'=>'产品到小满选项映射','product_lead_names'=>'产品到线索名称词映射','equipment_labels'=>'分类 slug 到产品类别名称','field_aliases'=>'自定义表单字段名到 F1/F2/F3/F4/F5/F6/F9') as $key=>$label)echo '<tr><th>'.esc_html($label).'</th><td><textarea name="'.esc_attr($key).'" rows="5" cols="70">'.esc_textarea(wp_json_encode((object)$c[$key],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)).'</textarea></td></tr>';
   foreach(array('id'=>'客户端编号','secret'=>'客户端密钥') as $key=>$label)echo '<tr><th>'.esc_html($label).'</th><td><input type="password" autocomplete="new-password" name="client_'.esc_attr($key).'" value=""><span> '.(self::credential($key)?'已配置，留空保留':'尚未配置').'</span></td></tr>';
