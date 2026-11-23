@@ -51,7 +51,8 @@ final class XI_Inquiry_Source_V1 {
   $medium=strtolower($q['utm_medium']??'');
   $paid=in_array($medium,array('cpc','ppc','paid','paid_social','paidsocial','paid-social','paid_search','display','cpm'),true);
   $suffix=$retained?'（历史营销记录）':'';
-  $google=!empty($q['gclid']) || !empty($q['gbraid']) || !empty($q['wbraid']) || !empty($q['dclid']);
+  // Google also adds gad_source / gad_campaignid to every ad click; they still mark an ad click when a browser strips the click id.
+  $google=!empty($q['gclid']) || !empty($q['gbraid']) || !empty($q['wbraid']) || !empty($q['dclid']) || !empty($q['gad_source']) || !empty($q['gad_campaignid']);
   $tiktok=!empty($q['ttclid']);
   $microsoft=!empty($q['msclkid']);
   if((int)$google+(int)$tiktok+(int)$microsoft+(int)!empty($q['fbclid'])>1
@@ -73,7 +74,10 @@ final class XI_Inquiry_Source_V1 {
   if($paid) return ($platform==='Google'?'Google Ads':($platform!==''?$platform.' 广告':'付费广告（平台未知）')).$suffix;
   if(in_array($platform,array('ChatGPT','Perplexity','Gemini','Copilot'),true)) return $platform.' 推荐'.$suffix;
   if(in_array($platform,array('Google','Bing','百度','DuckDuckGo','Yahoo'),true)) {
-   return $medium==='organic'?$platform.' SEO'.$suffix:$platform.' 搜索（广告/自然未确定）'.$suffix;
+   if($medium==='organic') return $platform.' SEO'.$suffix;
+   // Every Google Ads click on these sites carries a click id or the campaign codes (auto-tagging and final URL suffixes on all
+   // six accounts, checked 2026-11-23), so a Google referrer without them is a natural search visit.
+   return $platform==='Google'?'Google 自然搜索'.$suffix:$platform.' 搜索（广告/自然未确定）'.$suffix;
   }
   if(in_array($platform,array('Facebook','Meta','Instagram','TikTok','YouTube'),true)) return $platform.' 社媒（付费/自然未确定）'.$suffix;
   if(!empty($q['fbclid'])) return 'Facebook / Instagram（付费/自然未确定）'.$suffix;

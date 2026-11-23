@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 小满询盘中心
  * Description: Bricks 原生表单、询盘后台、条件留言、广告归因和小满同步统一管理。
- * Version: 2.0.0-beta.19
+ * Version: 2.0.0-beta.20
  * Requires at least: 6.9
  * Requires PHP: 8.2
  * Author: Site Operations
@@ -10,7 +10,7 @@
  * Update URI: https://github.com/cixin123/xiaoman-inquiry-center
  */
 if (!defined('ABSPATH')) exit;
-define('XI_VERSION','2.0.0-beta.19');
+define('XI_VERSION','2.0.0-beta.20');
 define('XI_FILE',__FILE__);
 require_once __DIR__.'/configuration.php';
 require_once __DIR__.'/compatibility.php';
@@ -37,6 +37,7 @@ define('XI_QUEUE_CURSOR',$xi_profile['queue_cursor']);
 define('XI_QUEUE_CPT',$xi_profile['queue_cpt']);
 require_once __DIR__.'/inquiry-source.php';
 require_once __DIR__.'/request-attribution.php';
+require_once __DIR__.'/ad-return.php';
 require_once __DIR__.'/provider.php';
 require_once __DIR__.'/native-inquiry-center.php';
 require_once __DIR__.'/native-inquiry-trash.php';

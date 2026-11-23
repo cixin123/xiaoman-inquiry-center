@@ -224,6 +224,7 @@ final class XI_Xiaoman_Queue_V1 {
   foreach(array('编号'=>XI_PROFILE['number_prefix'].$id,'时间'=>$date,'国家'=>self::country_name(self::country($fields['IP']??'')),
    '需求产品'=>$fields['F1']??'','需求型号'=>$fields['F2']??'','定制方式'=>$fields['customization_type']??'') as $label=>$value)
    if(($value=self::text($value,500))!=='')$parts[]=$label.'：'.$value;
+  if(($note=self::text($fields['A8']??'',300))!=='') $parts[]='来源备注：'.$note;
   if(($message=self::text($fields['F9']??'',10000))!=='') { $parts[]='';$parts[]='留言信息：';$parts[]=$message; }
   if(($url=self::text($fields['H1']??'',1800))!=='') { $parts[]='';$parts[]='询盘留言页面：';$parts[]=$url; }
   return implode("\n",$parts);

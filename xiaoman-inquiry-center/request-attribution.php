@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) return;
 final class XI_Request_Attribution_V1 {
  const HOST = XI_HOST;
  const KEYS = array('utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','utm_adgroup','utm_device','utm_matchtype','utm_network','utm_creative',
-  'gclid','gbraid','wbraid','dclid','fbclid','msclkid','ttclid',
+  'gclid','gbraid','wbraid','dclid','fbclid','msclkid','ttclid','gad_source','gad_campaignid',
   'campaign','campaignid','campaign_id','campaign_name','adgroup','adgroupid','adgroup_id','adgroup_name',
   'adset_name','adset_id','ad','creative','creative_id','adid','ad_id','ad_name',
   'keyword','kw','matchtype','mt','device','network','placement','targetid','target_id','loc','loc_physical_ms');
@@ -61,7 +61,7 @@ final class XI_Request_Attribution_V1 {
   $label=$a['source_label'];
   $platforms=array('Google Ads'=>'google_ads','Google 广告'=>'google_ads','Facebook 广告'=>'meta_ads','Meta 广告'=>'meta_ads',
    'Instagram 广告'=>'meta_ads','Microsoft Ads'=>'microsoft_ads','Bing 广告'=>'microsoft_ads','TikTok 广告'=>'tiktok_ads',
-   'Google SEO'=>'google_organic','Google 搜索（广告/自然未确定）'=>'google_search',
+   'Google SEO'=>'google_organic','Google 自然搜索'=>'google_organic','Google 搜索（广告/自然未确定）'=>'google_search',
    'ChatGPT 推荐'=>'chatgpt','直接访问 / 来源未提供'=>'direct_or_unknown','营销来源未确定'=>'unknown','未知（渠道标记冲突）'=>'conflict');
   $a['source_platform']=$platforms[$label]??(strpos($label,'Facebook')===0||strpos($label,'Instagram')===0?'meta_unspecified':'other_or_unknown');
   // Without a retained, consented visit we cannot prove that a clean internal page is Direct.

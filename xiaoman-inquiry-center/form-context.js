@@ -11,7 +11,7 @@
   var FIRST='xi_first_v1',VISIT='xi_visit_v1',MARKETING='xi_marketing_v1',SESSION='xi_session_ad_v1';
   // A single plugin-owned packet replaces builder HD fields. Native Custom gates CRM.
   var FORM = 'form.brxe-form[data-xi-inquiry]';
-  var KEYS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','utm_adgroup','utm_device','utm_matchtype','utm_network','utm_creative','campaign','campaign_name','campaign_id','campaignid','adgroup','adgroup_name','adgroup_id','adgroupid','adset_name','adset_id','ad','ad_name','ad_id','creative_id','adid','creative','keyword','kw','device','loc','loc_physical_ms','gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid','matchtype','mt','network','placement','targetid','target_id'];
+  var KEYS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','utm_adgroup','utm_device','utm_matchtype','utm_network','utm_creative','campaign','campaign_name','campaign_id','campaignid','adgroup','adgroup_name','adgroup_id','adgroupid','adset_name','adset_id','ad','ad_name','ad_id','creative_id','adid','creative','keyword','kw','device','loc','loc_physical_ms','gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid','gad_source','gad_campaignid','matchtype','mt','network','placement','targetid','target_id'];
   // Without consent only campaign-structure codes may follow an internal link, in the URL fragment:
   // never a click ID, nothing stored, and the fragment never reaches the server or the page cache.
   var CLICK_IDS = ['gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid'];

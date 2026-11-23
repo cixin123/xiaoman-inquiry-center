@@ -170,6 +170,16 @@ check(XI_Xiaoman_Queue_V1::payload($row, strtotime('2026-11-05 06:50:46 UTC'))['
 $row = submission('2026-11-05 06:50:46'); $row['attribution'] = array('source_label' => 'Instagram 广告'); $GLOBALS['fixture_config_extra'] = array('channel_origin_ids' => array('ins' => '502'));
 check(XI_Xiaoman_Queue_V1::payload($row, strtotime('2026-11-05 06:50:46 UTC'))['origin_list'] === array('502'), 'origin_from_attribution_label');
 $GLOBALS['fixture_config_extra'] = array();
+// beta.20: natural search and ad-return Google Ads keep the site's Google word; the ad return note reaches the Xiaoman remark.
+check(XI_Xiaoman_Queue_V1::origin_word('华腾谷歌', 'Google 自然搜索') === '华腾谷歌', 'title_word_natural_search');
+check(XI_Xiaoman_Queue_V1::origin_word('华腾谷歌', 'Google Ads') === '华腾谷歌', 'title_word_ad_return');
+$ret = submission('2026-11-05 06:50:46'); $ret['source'] = 'Google Ads';
+$ret['fields'][] = array('id' => 'A8', 'value' => '之前点过广告：系列 CAMPAIGN，8 分钟前');
+$retPayload = XI_Xiaoman_Queue_V1::payload($ret, strtotime('2026-11-05 06:50:46 UTC'));
+check(!is_wp_error($retPayload) && $retPayload['name'] === '261105FIXTURE-PRODUCT-CAMPAIGN', 'ad_return_title_keeps_campaign', is_wp_error($retPayload) ? $retPayload->message : $retPayload['name'], '261105FIXTURE-PRODUCT-CAMPAIGN');
+check(!is_wp_error($retPayload) && strpos($retPayload['remark'], "来源备注：之前点过广告：系列 CAMPAIGN，8 分钟前") !== false, 'ad_return_note_in_remark');
+$plain = XI_Xiaoman_Queue_V1::payload(submission('2026-11-05 06:50:46'), strtotime('2026-11-05 06:50:46 UTC'));
+check(!is_wp_error($plain) && strpos($plain['remark'], '来源备注') === false, 'no_note_without_ad_return');
 check($GLOBALS['fixture_http_attempts'] === 0, 'no_http_or_crm_attempt');
 
 $failed = count(array_filter($checks, fn($row) => !$row['passed']));

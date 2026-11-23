@@ -213,6 +213,8 @@ final class XI_Native_Inquiry_Center {
   if($attribution) foreach(XI_Request_Attribution_V1::legacy($attribution) as $key=>$value) if($value!=='') $hd[$key]=$value;
   $hd=XI_Request_Attribution_V1::repair_legacy($hd);
   $hd['H3']=$visitor['device']; $hd['H2']=$visitor['ip'];
+  // Consented natural Google visit: an ad landing from the same visitor within the window makes it Google Ads (first entry was the ad).
+  if(is_array($attribution) && class_exists('XI_Ad_Return_V1')) XI_Ad_Return_V1::check($attribution,$hd,$visitor['ip']);
   $source=self::source($attribution['source_label']??'',$hd);
   if(is_array($attribution) && $source!==($attribution['source_label']??'')) {
    $attribution['source_label']=$source;
@@ -410,7 +412,7 @@ final class XI_Native_Inquiry_Center {
   return array('number'=>'询盘编号','date'=>'Date','country'=>'Country','F1'=>'Equipment','F2'=>'Model',
    'F3'=>'Full name','F4'=>'Last name','F5'=>'Email','F6'=>'WhatsApp','H3'=>'PC/Mobile','F9'=>'Message','customization_type'=>'Customization type',
    'H1'=>'询盘的页面','H2'=>'IP address','A1'=>'campaign','A2'=>'keyword','A3'=>'adgroup','A4'=>'device','A5'=>'gclid / fbclid','A6'=>'loc',
-   'source'=>'询盘来源','A7'=>'广告ID/名称','R1'=>'首次来源网站','R2'=>'首次进入页面','R3'=>'本次来源网站','R4'=>'本次进入页面','R5'=>'询盘前个页面','R6'=>'询盘按钮标识');
+   'source'=>'询盘来源','A7'=>'广告ID/名称','R1'=>'首次来源网站','R2'=>'首次进入页面','R3'=>'本次来源网站','R4'=>'本次进入页面','R5'=>'询盘前个页面','R6'=>'询盘按钮标识','A8'=>'首次广告进站');
  }
  static function display($row) {
   $r=self::record($row); if(!$r) return array();
