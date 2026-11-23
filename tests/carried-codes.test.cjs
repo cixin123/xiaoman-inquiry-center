@@ -45,7 +45,7 @@ test('the next page reads carried codes, removes the marker and fills the campai
  assert.equal(carriedFrom(press(d,'product')).get('campaign'),'sefk-ds-la03','the chain continues to the following page');d.window.close();
 });
 test('expired, future, malformed and placeholder codes are ignored; injected click IDs are dropped',()=>{
- for(const h of [mark('campaign=old&t='+(Date.now()-31*60000)),mark('campaign=late&t='+(Date.now()+3600000)),'#xi=%E0%A4%A',mark('campaign=x'),mark('campaign={campaignid}&t='+Date.now())]){
+ for(const h of [mark('campaign=old&t='+(Date.now()-121*60000)),mark('campaign=late&t='+(Date.now()+3600000)),'#xi=%E0%A4%A',mark('campaign=x'),mark('campaign={campaignid}&t='+Date.now())]){
   const d=page(h);assert.equal(packet(d).A1,'',h);assert.equal(d.window.location.hash,'',h);assert.equal(press(d,'product'),'/products/x/',h);d.window.close();
  }
  const d=page(mark('campaign=ok-code&gclid=INJECTED&t='+Date.now()));assert.equal(packet(d).A1,'ok-code');assert.equal(packet(d).A5,'');
@@ -107,4 +107,49 @@ test('a marker on the thank-you redirect keeps the query, is removed and carries
  const d=page('?form=quick_quote&inquiry_id=FW-N7&form_type=detail'+mark('campaign=pmfk-el-br&device=m&loc=1&t='+Date.now()));
  assert.equal(d.window.location.hash,'');assert.equal(d.window.location.search,'?form=quick_quote&inquiry_id=FW-N7&form_type=detail');
  assert.equal(carriedFrom(press(d,'product')).get('campaign'),'pmfk-el-br');d.window.close();
+});
+// beta.21: the entry page's source rides along with the codes (origin only, or 'direct'), for two hours after each click.
+const inside={referrer:'https://fixture.example.invalid/products/'};
+test('without consent the entry page carries where the visit came from: an external origin only, or direct',()=>{
+ const d=page('','rejected',{referrer:'https://www.google.com/search?q=mini+excavator'});const q=carriedFrom(press(d,'product'));
+ assert.equal(q.get('src'),'https://www.google.com');assert.equal(q.has('campaign'),false);assert.equal(q.has('q'),false);assert.ok(Math.abs(Number(q.get('t'))-Date.now())<5000);
+ assert.equal('entry_referrer' in packet(d)._request,false,'the entry page itself is labelled from its own referrer');
+ assert.equal(d.window.localStorage.length,0);assert.equal(d.window.sessionStorage.length,0);d.window.close();
+ const e=page('','rejected');assert.equal(carriedFrom(press(e,'product')).get('src'),'direct','no referrer = opened directly');e.window.close();
+ const f=page(adLanding,'rejected',{referrer:'https://www.google.com/'});const g=carriedFrom(press(f,'product'));
+ assert.equal(g.get('src'),'https://www.google.com');assert.equal(g.get('campaign'),'sefk-ds-la03');assert.equal(g.has('gclid'),false);f.window.close();
+ const h=page('','rejected',{referrer:'android-app://com.google.android.gm/'});assert.equal(carriedFrom(press(h,'product')).get('src'),'direct','an app referrer is no web source');h.window.close();
+});
+test('a later page sends the carried entry source, keeps the chain going and stores nothing',()=>{
+ const d=page(mark('src=https://www.google.com&t='+Date.now()),'rejected',inside);const p=packet(d);
+ assert.equal(p._request.entry_referrer,'https://www.google.com/');assert.equal(p._tracking.carried_source,'previous_page_source');assert.equal(p.A1,'');
+ assert.equal(p._request.referrer,'https://fixture.example.invalid/products/','the previous page is still reported');assert.equal(d.window.location.hash,'');
+ assert.equal(carriedFrom(press(d,'product')).get('src'),'https://www.google.com');assert.equal(carriedFrom(press(d,'lang')).get('src'),'https://www.google.com','language links carry it too');
+ assert.equal(d.window.localStorage.length,0);assert.equal(d.window.sessionStorage.length,0);d.window.close();
+ const e=page(mark('src=direct&t='+Date.now()),'rejected',inside);assert.equal(packet(e)._request.entry_referrer,'','opened directly');e.window.close();
+ const f=page('','rejected',inside);assert.equal('entry_referrer' in packet(f)._request,false,'no marker, nothing claimed');assert.equal(press(f,'product'),'/products/x/');f.window.close();
+});
+test('the carried codes and source last two hours after the last click',()=>{
+ const ok=page(mark('campaign=pmex-cp-eu&gad_source=1&src=https://www.google.com&t='+(Date.now()-85*60000)),'rejected',inside);
+ assert.equal(packet(ok).A1,'pmex-cp-eu');assert.equal(packet(ok)._request.entry_referrer,'https://www.google.com/');
+ const q=carriedFrom(press(ok,'lang'));assert.equal(q.get('campaign'),'pmex-cp-eu');assert.ok(Math.abs(Number(q.get('t'))-Date.now())<5000,'each click restarts the two hours');ok.window.close();
+ const old=page(mark('campaign=pmex-cp-eu&src=https://www.google.com&t='+(Date.now()-121*60000)),'rejected',inside);
+ assert.equal(packet(old).A1,'');assert.equal('entry_referrer' in packet(old)._request,false);assert.equal(press(old,'product'),'/products/x/');old.window.close();
+ const late=page(mark('campaign=pmex-cp-eu&src=https://www.google.com&t='+(Date.now()-85*60000)),'rejected',inside);const now=Date.now();
+ late.window.Date.now=()=>now+40*60000;late.window.document.querySelector('textarea').dispatchEvent(new late.window.FocusEvent('focusin',{bubbles:true}));
+ assert.equal(packet(late).A1,'','two hours passed on this page');assert.equal('entry_referrer' in packet(late)._request,false);late.window.close();
+});
+test('only an external origin or "direct" is accepted as a carried source',()=>{
+ for(const s of ['javascript:alert(1)','https://fixture.example.invalid','https://www.fixture.example.invalid','https://www.google.com/search?q=x','https://user@evil.example','https://evil.example:8443','ftp://files.example','x'.repeat(300),'']){
+  const d=page(mark('src='+encodeURIComponent(s)+'&t='+Date.now()),'rejected',inside);
+  assert.equal('entry_referrer' in packet(d)._request,false,s);assert.equal(press(d,'product'),'/products/x/',s);d.window.close();
+ }
+});
+test('consented visitors send no carried source; consent given on the next page takes the carried source into history',async()=>{
+ const a=page('','accepted',{referrer:'https://www.google.com/'});assert.equal(press(a,'product'),'/products/x/');assert.equal('entry_referrer' in packet(a)._request,false);a.window.close();
+ const d=page(mark('src=https://www.google.com&t='+Date.now()),'rejected',inside);
+ d.window.__consent='accepted';d.window.document.dispatchEvent(new d.window.Event('RCB/OptIn'));await new Promise(r=>setTimeout(r,5));
+ const p=packet(d);assert.equal(p._request.consent_status,'accepted');assert.equal('entry_referrer' in p._request,false);
+ assert.equal(JSON.parse(d.window.localStorage.getItem('xi_first_v1')).ref,'https://www.google.com/');assert.equal(p.R1,'https://www.google.com/');assert.equal(p.R3,'https://www.google.com/');
+ assert.equal(p._source.ref,'https://www.google.com/');assert.equal(press(d,'product'),'/products/x/','no decoration after consent');d.window.close();
 });

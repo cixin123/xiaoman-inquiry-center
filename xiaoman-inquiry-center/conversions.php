@@ -143,15 +143,26 @@ final class XI_Conversions {
   $ok=$wpdb->insert(self::table(),array('submission_id'=>$id,'token_hash'=>hash('sha256',$token),'request_uuid'=>$r['uuid'],'form_kind'=>$r['kind'],'created_utc'=>gmdate('Y-m-d H:i:s'),'expires_utc'=>gmdate('Y-m-d H:i:s',time()+1800),'site_timezone'=>wp_timezone_string(),'is_test'=>!empty($r['is_test'])?1:0,'consent_at_submit'=>wp_json_encode(self::states($r['measurement_consent']??array()))));
   if(!$ok)return '';return self::$tickets[$id]=$token;
  }
- // Without consent the browser keeps nothing, so the campaign codes (never a click ID) follow the redirect the way form-context.js carries them on links.
+ // Without consent the browser keeps nothing, so the campaign codes (never a click ID) and the visit's entry source
+ // (an external site's origin, or 'direct') follow the redirect the way form-context.js carries them on links.
  static function carried_fragment($r){
   $a=is_array($r['attribution']??null)?$r['attribution']:array();
   if(($a['consent_status']??'')==='accepted'||!is_string($a['landing_url']??null))return '';
   parse_str((string)parse_url($a['landing_url'],PHP_URL_QUERY),$q);
   foreach(array('gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid') as $k)unset($q[$k]);
+  $src=self::entry_source($a);if($src!=='')$q['src']=$src;
   if(!$q)return '';
   $q['t']=sprintf('%.0f',microtime(true)*1000);
   return '#xi='.rawurlencode(http_build_query($q,'','&',PHP_QUERY_RFC3986));
+ }
+ // The entry source this inquiry was labelled from: an external referrer's origin, 'direct' when the plugin itself
+ // concluded "opened directly", '' when only "came from this site" is known.
+ static function entry_source($a){
+  $ref=is_string($a['referrer']??null)?$a['referrer']:null;if($ref===null)return '';
+  if($ref==='')return ($a['source_label']??'')==='直接访问 / 来源未提供'?'direct':'';
+  $u=parse_url($ref);$host=strtolower((string)($u['host']??''));$scheme=strtolower((string)($u['scheme']??''));
+  if(!is_array($u)||!in_array($scheme,array('http','https'),true)||!preg_match('/^[a-z0-9.-]+$/D',$host)||isset($u['port'])||isset($u['user'])||isset($u['pass']))return '';
+  return $host===XI_HOST||$host==='www.'.XI_HOST?'':$scheme.'://'.$host;
  }
  static function response($response,$form){
   if(!self::active()||!is_array($response)||($response['type']??'')!=='success'||!is_callable(array($form,'get_id')))return $response;

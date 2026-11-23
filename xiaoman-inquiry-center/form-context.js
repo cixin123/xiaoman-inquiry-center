@@ -6,14 +6,15 @@
   else api.start(root);
 })(typeof window !== 'undefined' ? window : null, function () {
   'use strict';
-  var DAY = 86400000, IDLE = 30 * 60000;
+  var DAY = 86400000, IDLE = 30 * 60000, CARRY_IDLE = 2 * 3600000;
   var CFG=(typeof window!=='undefined' && window.XIContextConfig)||{}; var SERVICE=CFG.service||'xiaoman-inquiry-attribution';
   var FIRST='xi_first_v1',VISIT='xi_visit_v1',MARKETING='xi_marketing_v1',SESSION='xi_session_ad_v1';
   // A single plugin-owned packet replaces builder HD fields. Native Custom gates CRM.
   var FORM = 'form.brxe-form[data-xi-inquiry]';
   var KEYS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','utm_adgroup','utm_device','utm_matchtype','utm_network','utm_creative','campaign','campaign_name','campaign_id','campaignid','adgroup','adgroup_name','adgroup_id','adgroupid','adset_name','adset_id','ad','ad_name','ad_id','creative_id','adid','creative','keyword','kw','device','loc','loc_physical_ms','gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid','gad_source','gad_campaignid','matchtype','mt','network','placement','targetid','target_id'];
-  // Without consent only campaign-structure codes may follow an internal link, in the URL fragment:
-  // never a click ID, nothing stored, and the fragment never reaches the server or the page cache.
+  // Without consent only campaign-structure codes and the entry page's source (an external site's origin, or 'direct')
+  // may follow an internal link, in the URL fragment: never a click ID, a path or a query, nothing stored, and the
+  // fragment never reaches the server or the page cache.
   var CLICK_IDS = ['gclid','fbclid','gbraid','wbraid','ttclid','dclid','msclkid'];
   var CARRY = KEYS.filter(function (k) { return CLICK_IDS.indexOf(k) < 0; }), MARK = '#xi=';
   function text(v, n) { return typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, n || 500) : ''; }
@@ -22,13 +23,14 @@
     CARRY.forEach(function (k) { var v = text(params.get(k), 200); if (v && !/[{}]|__[A-Z_]+__/.test(v)) out[k] = v; });
     return Object.keys(out).length ? out : null;
   }
-  // '#xi=' + encoded codes and the click time; valid for one visit window after that click.
-  function carriedCodes(hash, now) {
+  // '#xi=' + encoded codes, the entry page's source and the click time; valid for two hours after that click.
+  function carriedCodes(hash, now, href) {
     if (typeof hash !== 'string' || hash.indexOf(MARK) !== 0 || hash.length > 2000) return null;
     try {
       var q = new URLSearchParams(decodeURIComponent(hash.slice(MARK.length))), at = Number(q.get('t'));
-      if (!Number.isFinite(at) || at > now + 60000 || now - at >= IDLE) return null;
-      var found = codes(q); return found ? {codes:found, at:at} : null;
+      if (!Number.isFinite(at) || at > now + 60000 || now - at >= CARRY_IDLE) return null;
+      var found = codes(q), src = validSource(q.get('src'), href);
+      return found || src ? {codes:found || {}, src:src, at:at, from:'hash'} : null;
     } catch (_) { return null; }
   }
   // The page this one was opened from, when it is on this site: covers a landing page left before its scripts ran.
@@ -36,8 +38,22 @@
     if (!ref || !internal(ref, href)) return null;
     try { return codes(new URL(ref).searchParams); } catch (_) { return null; }
   }
-  function carryHash(found, now) {
-    var q = new URLSearchParams(); Object.keys(found).forEach(function (k) { q.set(k, found[k]); }); q.set('t', String(now));
+  // Where the visit entered, for the no-consent chain only: an external site's origin, or 'direct' when the browser gave
+  // no web referrer (typed address, bookmark, app). '' for a page of this site.
+  function sourceOf(ref, href) {
+    if (!ref) return 'direct';
+    if (internal(ref, href)) return '';
+    try { var u = new URL(ref); return /^https?:$/.test(u.protocol) ? validSource(u.protocol + '//' + u.hostname, href) : 'direct'; } catch (_) { return ''; }
+  }
+  function validSource(v, href) {
+    if (v === 'direct') return v;
+    if (typeof v !== 'string' || v.length > 200 || !/^https?:\/\/[a-z0-9.-]+$/i.test(v) || internal(v + '/', href)) return '';
+    return v.toLowerCase();
+  }
+  function carryHash(found, src, now) {
+    var q = new URLSearchParams(); Object.keys(found).forEach(function (k) { q.set(k, found[k]); });
+    if (src) q.set('src', src);
+    q.set('t', String(now));
     return MARK + encodeURIComponent(q.toString());
   }
   function withCodes(href, found) {
@@ -145,14 +161,22 @@
     var d = w.document, initialHref = w.location.href, initialRef = d.referrer;
     // A tagged page carries its own codes. An untagged page may receive codes from the previous page of this tab;
     // a page URL that already has campaign codes always wins, and the marker is removed from the address bar.
-    var own = codes(new URL(initialHref).searchParams), carried = own ? {codes:own, at:0} : null, landingHref = initialHref;
+    var own = codes(new URL(initialHref).searchParams), landingHref = initialHref;
+    var carried = own ? {codes:own, src:sourceOf(initialRef, initialHref), at:0, from:'own'} : null;
     if (!own) {
       var arrived = Date.now(), fromRef = referrerCodes(initialRef, initialHref);
-      carried = carriedCodes(w.location.hash, arrived) || (fromRef ? {codes:fromRef, at:arrived} : null);
-      if (carried) landingHref = withCodes(initialHref, carried.codes);
+      carried = carriedCodes(w.location.hash, arrived, initialHref) || (fromRef ? {codes:fromRef, src:'', at:arrived, from:'referrer'} : null);
+      // The first page of a visit carries only where it came from, so a later page can still name it without consent.
+      // A stale or broken marker means the visitor came from inside this site: not an entry page.
+      if (!carried && !internal(initialRef, initialHref) && w.location.hash.indexOf(MARK) !== 0) { var entrySrc = sourceOf(initialRef, initialHref); if (entrySrc) carried = {codes:{}, src:entrySrc, at:0, from:'entry'}; }
+      if (carried && Object.keys(carried.codes).length) landingHref = withCodes(initialHref, carried.codes);
     }
     if (w.location.hash.indexOf(MARK) === 0) { try { w.history.replaceState(w.history.state, '', w.location.pathname + w.location.search); } catch (_) {} }
-    function landing() { return carried && carried.at && Date.now() - carried.at >= IDLE ? initialHref : landingHref; }
+    function landing() { return carried && carried.at && Date.now() - carried.at >= CARRY_IDLE ? initialHref : landingHref; }
+    // The entry source carried from an earlier page of this visit ('direct' = that page had no referrer).
+    function carriedSource() { return carried && carried.from === 'hash' && carried.src && !(carried.at && Date.now() - carried.at >= CARRY_IDLE) ? carried.src : ''; }
+    // The referrer that stands for this visit's entry: the carried source when this page was opened from an earlier one.
+    function entryRef() { var s = carriedSource(); return s ? (s === 'direct' ? '' : s + '/') : initialRef; }
     // Bricks AJAX pagination moves the address without a reload: the snapshot must name the page the form is really on.
     function onCurrentPath(href) {
       try { var u = new URL(href), path = new URL(w.location.href).pathname; if (u.pathname === path) return href; u.pathname = path; return u.href; } catch (_) { return href; }
@@ -174,7 +198,7 @@
     function refreshOperational() {
       if(!allowed){removeOperational();return null;}
       var now = Date.now(), saved = sessionRecord(read('sessionStorage', SESSION), now);
-      var current = sessionRecord({landing:url(landing(),true),ref:url(initialRef),at:now}, now);
+      var current = sessionRecord({landing:url(landing(),true),ref:url(entryRef()),at:now}, now);
       // A newly tagged page is a new authoritative ad entry for this tab.
       operational = current || saved;
       try {
@@ -205,7 +229,7 @@
       var next = consent();
       if (!next) { if (allowed || consentStatus === 'consent_declined') remove(); if (consentStatus === 'consent_declined') removeOperational(); allowed = false; state = null; pendingPopup = null; popupCTA = new WeakMap(); inlineCTA = new WeakMap(); return; }
       if (!allowed || !state) {
-        state = advance(read('localStorage', FIRST), read('sessionStorage', VISIT), landing(), initialRef, Date.now(), navigationType);
+        state = advance(read('localStorage', FIRST), read('sessionStorage', VISIT), landing(), entryRef(), Date.now(), navigationType);
         // Drop text/position retained by an older page in this tab's visit record.
         if (state.visit.cta) { var oldCTA = state.visit.cta; state.visit.cta = {id:text(oldCTA.id),at:oldCTA.at,to:oldCTA.to}; }
         allowed = true; save();
@@ -233,13 +257,16 @@
     function fill(form, submitter) {
       set(form, 'H1', url(w.location.href));
       var values = {A1:'',A2:'',A3:'',A4:'',A5:'',A6:'',A7:'',R1:'',R2:'',R3:'',R4:'',R5:'',R6:''};
-      var diagnostic = {version:'1.0.6', status:consentStatus, basis:'none', storage:'not_used'}, source = null;
+      var diagnostic = {version:'1.0.7', status:consentStatus, basis:'none', storage:'not_used'}, source = null;
       // An in-memory snapshot of this page, not a cross-page tracking store.
       // Rejection clears retained history, not the URL already opened on this page.
       var here = landing();
       var request = {landing_ad_url:url(onCurrentPath(here),true),referrer:url(initialRef),
         consent_status:allowed?'accepted':(consentStatus==='consent_declined'?'rejected':'unknown')};
       if (here !== initialHref) diagnostic.carried = 'previous_page_codes';
+      // Without consent: the entry source carried from an earlier page ('' = opened directly). Origin only.
+      var entrySource = allowed ? '' : carriedSource();
+      if (entrySource) { request.entry_referrer = entrySource === 'direct' ? '' : entrySource + '/'; diagnostic.carried_source = 'previous_page_source'; }
       Object.assign(values,ads(here,initialRef));
       if (allowed && state) {
         var selected = marketing();
@@ -306,12 +333,12 @@
       if (!a || a.hasAttribute('download') || a.closest('.brx-ajax-pagination')) return;
       try {
         var now = Date.now(), target = new URL(a.getAttribute('href'), w.location.href), here = new URL(w.location.href);
-        if (carried.at && now - carried.at >= IDLE) return;
+        if (carried.at && now - carried.at >= CARRY_IDLE) return;
         if (!/^https?:$/.test(target.protocol) || !internal(target.href, here.href)) return;
         if (target.hash && target.hash.indexOf(MARK) !== 0) return;
         if (target.origin + target.pathname + target.search === here.origin + here.pathname + here.search) return;
         if (/^\/(wp-admin|wp-login\.php|wp-json)(\/|$)/.test(target.pathname) || /\.(pdf|zip|rar|jpe?g|png|gif|webp|svg|docx?|xlsx?|pptx?|mp4)$/i.test(target.pathname)) return;
-        target.hash = carryHash(carried.codes, now);
+        target.hash = carryHash(carried.codes, carried.src, now);
         a.setAttribute('href', target.href);
       } catch (_) {}
     }

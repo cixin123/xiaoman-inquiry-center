@@ -3,6 +3,7 @@
 if (!defined('ABSPATH')) return;
 final class XI_Request_Attribution_V1 {
  const HOST = XI_HOST;
+ const INTERNAL_UNKNOWN = '未知（站内访问，未关联首次来源）';
  const KEYS = array('utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','utm_adgroup','utm_device','utm_matchtype','utm_network','utm_creative',
   'gclid','gbraid','wbraid','dclid','fbclid','msclkid','ttclid','gad_source','gad_campaignid',
   'campaign','campaignid','campaign_id','campaign_name','adgroup','adgroupid','adgroup_id','adgroup_name',
@@ -66,7 +67,7 @@ final class XI_Request_Attribution_V1 {
   $a['source_platform']=$platforms[$label]??(strpos($label,'Facebook')===0||strpos($label,'Instagram')===0?'meta_unspecified':'other_or_unknown');
   // Without a retained, consented visit we cannot prove that a clean internal page is Direct.
   if($a['source_platform']==='direct_or_unknown' && wp_parse_url($a['referrer'],PHP_URL_HOST)===self::HOST) {
-   $a['source_platform']='unknown';$a['source_label']='未知（站内访问，未关联首次来源）';
+   $a['source_platform']='unknown';$a['source_label']=self::INTERNAL_UNKNOWN;
   }
   return $a;
  }
@@ -90,6 +91,15 @@ final class XI_Request_Attribution_V1 {
   $p=is_string($raw)&&strlen($raw)<=24000?json_decode($raw,true):null;
   return is_array($p)?$p:array();
  }
+ // Without consent, form-context.js may carry where the visit entered along internal links ('#xi=', never stored):
+ // an external site's origin, or '' when the entry page had no referrer. Anything else is ignored (null).
+ static function carried_entry($r) {
+  if(!is_array($r) || !array_key_exists('entry_referrer',$r) || !is_string($r['entry_referrer'])) return null;
+  $v=$r['entry_referrer']; if($v==='') return '';
+  if(strlen($v)>210 || !preg_match('#^(https?)://([a-z0-9.-]+)/$#iD',$v,$m)) return null;
+  $host=strtolower($m[2]);
+  return $host===self::HOST || $host==='www.'.self::HOST ? null : strtolower($m[1]).'://'.$host.'/';
+ }
  static function submission($request,$server) {
   $p=self::packet($request); $r=is_array($p['_request']??null)?$p['_request']:array();
   $tracking=is_array($p['_tracking']??null)?$p['_tracking']:array();
@@ -111,6 +121,12 @@ final class XI_Request_Attribution_V1 {
    $history=self::parse($source['landing']??'',$source['ref']??'',$consent,
     $consent==='accepted'?'consented_first_touch':'current_page_fallback');
    if($history) $a=$history;
+  }
+  // No consent: a clean internal page can still name the visit's entry source when the browser carried it.
+  if($consent!=='accepted' && $a && ($a['source_label']??'')===self::INTERNAL_UNKNOWN && $same_page && $client!=='') {
+   $entry=self::carried_entry($r);
+   $carried=$entry!==null?self::parse($client,$entry,$consent,'current_page_fallback'):array();
+   if($carried) { $carried['first_touch_scope']='carried_entry_source'; $carried['previous_page']=(string)($a['referrer']??''); $a=$carried; }
   }
   // An old client without a current-page packet keeps its original legacy handling unless
   // the submit HTTP Referer itself contains explicit marketing parameters.
